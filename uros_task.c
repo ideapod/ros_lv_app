@@ -20,6 +20,8 @@
 #include "uros_task.h"
 #include "app.h"
 #define TAG "UROS"
+#include "servo_driver.h"
+
 
 #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status in %s on line %d: %d. Aborting.\n",__FILE__, __LINE__,(int)temp_rc);vTaskDelete(NULL);}}
 #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){printf("Failed status %s on line %d: %d. Continuing.\n",__FILE__, __LINE__,(int)temp_rc);}}
@@ -32,7 +34,6 @@ void subscription_callback(const void * msgin)
 {
 	const std_msgs__msg__Int32 * msg = (const std_msgs__msg__Int32 *)msgin;
 	ESP_LOGI(TAG, "received data: %d\n", msg->data);
-	// printf("Received: %d\n", msg->data);
 
 	BufferDataType txData;
     BaseType_t queueResult;
@@ -47,6 +48,9 @@ void subscription_callback(const void * msgin)
     {
         ESP_LOGI(TAG, "couldn't send data to gui.");
     }
+
+    ESP_LOGI(TAG, "setting servo angle: %d\n", msg->data);
+    set_servo_angle(msg->data);
 }
 
 void uros_start(QueueHandle_t inQueueHandle)
@@ -54,6 +58,11 @@ void uros_start(QueueHandle_t inQueueHandle)
 	xDataQueue = inQueueHandle;
 	rcl_allocator_t allocator = rcl_get_default_allocator();
 	rclc_support_t support;
+
+
+	// set up servo on pin 18
+	servo_driver_initialize(18);
+	ESP_LOGI(TAG, "servo driver initialised");
 
 	// create init_options
 	RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
