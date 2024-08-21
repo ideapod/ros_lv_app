@@ -77,10 +77,20 @@ void i2c_scan() {
 }
 
 void servo_pca9685_initialise(uint8_t addr) {
-    ESP_LOGI(TAG, "initialising pca9685, executing on core %d", xPortGetCoreID());
+    ESP_LOGI(TAG, "initialising pca9685, executing on core %d, with address: %x", xPortGetCoreID(), addr);
+    esp_err_t ret;
     set_pca9685_adress(addr);
-    resetPCA9685();
-    setFrequencyPCA9685(PCA9685_CLOCK_FREQUENCY_HZ);  // 1000 Hz
+    ret = resetPCA9685();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "resetting pca9685 failed: error code: %d", ret);
+        return;
+    }
+    ret = setFrequencyPCA9685(PCA9685_CLOCK_FREQUENCY_HZ);  // 1000 Hz
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "setting frequence pca9685 failed: error code: %d", ret);
+        return;
+    }
+
     turnAllOff();
 
     ESP_LOGI(TAG,"Finished pca9685 setup");
@@ -111,7 +121,7 @@ uint32_t servo_rot_to_pulsewidth(uint8_t channel, uint32_t degree_of_rotation)
     float req_rotation = degree_of_rotation;
 
     
-    cal_pulsewidth = min_width +  max_pulse_width * req_rotation / max_degrees;
+    cal_pulsewidth = min_width +  (max_pulse_width * req_rotation / max_degrees);
 
     ESP_LOGI(TAG,"min:%d, max:%d, max degrees:%d, pulse width: %d",
         channels[channel].min_pulse_us,
@@ -122,11 +132,15 @@ uint32_t servo_rot_to_pulsewidth(uint8_t channel, uint32_t degree_of_rotation)
     return cal_pulsewidth;
 }
 
-void get_steps_on_off_pulse_width(uint16_t *step_on, uint16_t *step_off, uint32_t pulse_width) {
+void get_steps_on_off_pulse_width(uint8_t channel, uint16_t *step_on, uint16_t *step_off, uint32_t pulse_width) {
     *step_on = 0;
 
+    // work out the maximum ticks - 4096 steps per period of the clock frequency
+    // we set. So 1/freq * 1,000,000 to convert to microseconds. 
+    float max_pulse_width = (float) 1.0 / PCA9685_CLOCK_FREQUENCY_HZ * 1000000;
+
     // convert % pulse of max width to a number of steps (% of 4096)
-    *step_off = ( ((float)pulse_width / SERVO_MAX_PULSEWIDTH ) * PCA9685_MAX_STEPS);
+    *step_off = ((float)(pulse_width / max_pulse_width) * PCA9685_MAX_STEPS);
 }
 
 
@@ -143,7 +157,7 @@ void set_pca9685_servo_angle(uint8_t num, uint32_t degree_angle) {
     uint32_t pulse_width = servo_rot_to_pulsewidth(num,degree_angle);
     
     uint16_t step_on, step_off;
-    get_steps_on_off_pulse_width(&step_on,&step_off,pulse_width);
+    get_steps_on_off_pulse_width(num, &step_on,&step_off,pulse_width);
     ESP_LOGI(TAG,"step on: %d, step off: %d", step_on, step_off);
 
     ret = setPWM(num, step_on, step_off);
@@ -158,6 +172,6 @@ void set_pca9685_servo_angle(uint8_t num, uint32_t degree_angle) {
     }
     else
     {
-        ESP_LOGI(TAG, "No ack, sensor not connected...skip...\n");
+        ESP_LOGE(TAG, "No ack, sensor not connected...skip...\n");
     }
 }
